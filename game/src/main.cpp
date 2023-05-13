@@ -13,11 +13,18 @@ int main(void)
     float ballRadius2 = 50.0f;
     Vector2 ballposition2 = { 625.0f, 325.0f };
 
+    //Initialize audio device
+    InitAudioDevice();
+
+    //Load audio file
+    Sound dingSound = LoadSound("../game/assets/audio/ding.mp3");//This function loads the sound from the specific file path
 
     while (!WindowShouldClose())
     {
         BeginDrawing();
         ClearBackground(RAYWHITE);
+
+        Texture2D githubTexture = LoadTexture("../game/assets/textures/github.png");// This function loads a texture image from a file and returns a Texture2D object
 
         ballPosition = GetMousePosition(); //This function returns a Vector2 containing the current position of the mouse cursor.
 
@@ -25,6 +32,9 @@ int main(void)
         {
             ballColor = RED; 
             ballcolor2 = VIOLET; 
+
+            // Play audio file
+            PlaySound(dingSound);//This function specifies when to play the sound
         }
         else
         {
@@ -34,18 +44,19 @@ int main(void)
 
        
 
-        DrawLine(50, 100, 150, 200, BLACK); //This function draws a line with the given start and end points and color.
-        DrawCircle(625, 325, 50, DARKBLUE); //This function draws a circle with the given center position, radius, and color.
+        DrawLine(50, 100, 150, 200, BLACK);//This function draws a line with the given start and end points and color.
+        DrawCircle(625, 325, 50, DARKBLUE);//This function draws a circle with the given center position, radius, and color.
 
 
-        DrawText("Hello World!", 16, 9, 20, RED);
+        DrawText("Welcome to my Goofy World!", 16, 9, 20, RED);
         DrawCircleV(ballposition2, ballRadius2, ballcolor2); //This function draws a circle with the given center position, radius, and color.
         DrawCircleV(ballPosition, ballRadius, ballColor); //This function draws a circle with the given position (not fixed position), radius, and color.
 
-        DrawTriangle(Vector2{ 200, 200 }, Vector2{ 250, 250 }, Vector2{ 300, 200 }, PURPLE); //This function draws a triangle with the specified three vertex positions and fill color
         DrawRectangle(400, 300, 50, 100, LIME); //This function draws a rectangle with the specified position, size, and fill color
         DrawRectangleGradientH(600, 200, 100, 50, RED, YELLOW); //This function draws a rectangle with the specified position, size, and horizontal color gradient
         DrawPoly(Vector2{ 900, 100 }, 6, 40, 0, MAROON); //This function draws a regular polygon with the specified position, number of sides, radius, rotation angle, and fill color
+
+        DrawTexture(githubTexture, SCREEN_WIDTH - githubTexture.width / 1, SCREEN_HEIGHT - githubTexture.height / 1, WHITE); //This function specifies the location of the image file
 
         EndDrawing();
     }
