@@ -1,209 +1,216 @@
 #include "raylib.h"
 #include "rlImGui.h"
 #include <vector>
-#include <math.h>
+#include <cmath>
+#include "raymath.h"
 
-#define SCREEN_WIDTH 1280
-#define SCREEN_HEIGHT 720
-
-bool isMouseButtonPressed = false;
-
-Vector2 Vector2Subtract(Vector2 v1, Vector2 v2)
-{
-    Vector2 result;
-    result.x = v1.x - v2.x;
-    result.y = v1.y - v2.y;
-    return result;
-}
-
-Vector2 Vector2Normalize(Vector2 v)
-{
-    float magnitude = sqrtf(v.x * v.x + v.y * v.y);
-    if (magnitude != 0)
-    {
-        v.x /= magnitude;
-        v.y /= magnitude;
-    }
-    return v;
-}
-
-Vector2 Vector2Scale(Vector2 v, float scalar)
-{
-    Vector2 result;
-    result.x = v.x * scalar;
-    result.y = v.y * scalar;
-    return result;
-}
-
-Vector2 Vector2Add(Vector2 v1, Vector2 v2)
-{
-    Vector2 result;
-    result.x = v1.x + v2.x;
-    result.y = v1.y + v2.y;
-    return result;
-}
-
-class Rigidbody
-{
-public:
-    Vector2 position;
-    Vector2 velocity;
-
-    Rigidbody(Vector2 startPos)
-        : position(startPos), velocity({ 0, 0 })
-    {
-    }
-};
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 450
+#define WHISKER_LENGTH 100
+#define WHISKER_ANGLE 30
 
 class Agent
 {
 public:
-    Rigidbody rigidbody;
-    float maxSpeed;
-    float maxAcceleration;
+    Vector2 position;
+    float rotation;
 
-    Agent(Vector2 startPos, float speed, float acceleration)
-        : rigidbody(startPos), maxSpeed(speed), maxAcceleration(acceleration)
+    Agent(Vector2 startPos)
+        : position(startPos), rotation(0.0f)
     {
     }
 
-    void Update(float dt, const Vector2& target, const Vector2& fleePosition)
+    void Update(const Vector2& mousePosition, const Vector2& obstaclePosition)
     {
-        if (isMouseButtonPressed)
+        Vector2 direction = Vector2Subtract(mousePosition, position);
+        float angle = atan2f(direction.y, direction.x);
+        rotation = RAD2DEG * angle;
+
+        Vector2 obstacleDirection = Vector2Subtract(obstaclePosition, position);
+        float obstacleAngle = atan2f(obstacleDirection.y, obstacleDirection.x);
+        float angleDiff = rotation - RAD2DEG * obstacleAngle;
+
+        if (angleDiff > 0)
         {
-            // Calculate the direction vector from the agent's position to the target
-            Vector2 direction = Vector2Normalize(Vector2Subtract(target, rigidbody.position));
-
-            // Calculate the desired velocity vector
-            Vector2 desiredVelocity = Vector2Scale(direction, maxSpeed);
-
-            // Calculate the change in velocity required
-            Vector2 deltaVelocity = Vector2Subtract(desiredVelocity, rigidbody.velocity);
-
-            // Calculate the acceleration vector
-            Vector2 acceleration = Vector2Normalize(deltaVelocity);
-            acceleration = Vector2Scale(acceleration, maxAcceleration);
-
-            // Update the agent's velocity
-            rigidbody.velocity = Vector2Add(rigidbody.velocity, Vector2Scale(acceleration, dt));
-
-            // Check if the current speed is greater than the desired speed
-            float currentSpeed = sqrtf(rigidbody.velocity.x * rigidbody.velocity.x + rigidbody.velocity.y * rigidbody.velocity.y);
-            if (currentSpeed > maxSpeed)
-            {
-                rigidbody.velocity = Vector2Normalize(rigidbody.velocity);
-                rigidbody.velocity = Vector2Scale(rigidbody.velocity, maxSpeed);
-            }
+            rotation += 1.0f;
         }
         else
         {
-            // Flee from the specified position
-            Vector2 fleeVector = Flee(rigidbody.position, rigidbody.velocity, fleePosition, maxAcceleration);
+            rotation -= 1.0f;
+        }
 
-            // Update the agent's velocity based on the fleeing acceleration
-            rigidbody.velocity = Vector2Add(rigidbody.velocity, Vector2Scale(fleeVector, dt));
+        position = mousePosition;
+    }
 
-            // Check if the current speed is greater than the maximum speed
-            float currentSpeed = sqrtf(rigidbody.velocity.x * rigidbody.velocity.x + rigidbody.velocity.y * rigidbody.velocity.y);
-            if (currentSpeed > maxSpeed)
+
+};
+
+class Target
+{
+public:
+    Vector2 position;
+    float rotation;
+    Vector2 velocity;
+
+    Target(Vector2 startPos)
+        : position(startPos), rotation(0.0f), velocity(Vector2Zero())
+    {
+    }
+
+    void Target::Update(const Agent& agent, const std::vector<Vector2>& obstaclePositions)
+    {
+        Vector2 direction = Vector2Subtract(agent.position, position);
+        direction = Vector2Normalize(direction);
+
+        for (const auto& obstaclePos : obstaclePositions)
+        {
+            Vector2 obstacleDirection = Vector2Subtract(obstaclePos, position);
+            float obstacleDistance = Vector2Length(obstacleDirection);
+
+            if (obstacleDistance < WHISKER_LENGTH)
             {
-                rigidbody.velocity = Vector2Normalize(rigidbody.velocity);
-                rigidbody.velocity = Vector2Scale(rigidbody.velocity, maxSpeed);
+                Vector2 avoidanceForce = Vector2Normalize(obstacleDirection);
+                avoidanceForce = Vector2Scale(avoidanceForce, WHISKER_LENGTH - obstacleDistance);
+
+                direction = Vector2Add(direction, avoidanceForce);
             }
         }
 
-        // Update the agent's position based on the velocity
-        rigidbody.position = Vector2Add(rigidbody.position, Vector2Scale(rigidbody.velocity, dt));
+        float speed = 2.0f;
+        velocity = Vector2Scale(direction, speed);
+
+        position = Vector2Add(position, velocity);
+
+        float angle = atan2f(direction.y, direction.x);
+        rotation = RAD2DEG * angle;
     }
 
-private:
-    Vector2 Flee(const Vector2& agentPosition, const Vector2& agentVelocity, const Vector2& targetPosition, float maxAcceleration)
+
+    void DrawWhiskers(const Agent& agent) const
     {
-        // Calculate the direction vector from the agent to the target
-        Vector2 direction = Vector2Normalize(Vector2Subtract(targetPosition, agentPosition));
+        Vector2 right = { cosf(DEG2RAD * (rotation + WHISKER_ANGLE)), sinf(DEG2RAD * (rotation + WHISKER_ANGLE)) };
+        Vector2 left = { cosf(DEG2RAD * (rotation - WHISKER_ANGLE)), sinf(DEG2RAD * (rotation - WHISKER_ANGLE)) };
 
-        // Calculate the desired velocity vector
-        Vector2 desiredVelocity = Vector2Scale(direction, -maxSpeed);
+        Vector2 rightFront = { cosf(DEG2RAD * (rotation + WHISKER_ANGLE + 45)), sinf(DEG2RAD * (rotation + WHISKER_ANGLE + 45)) };
+        Vector2 rightBack = { cosf(DEG2RAD * (rotation + WHISKER_ANGLE - 45)), sinf(DEG2RAD * (rotation + WHISKER_ANGLE - 45)) };
+        Vector2 leftFront = { cosf(DEG2RAD * (rotation - WHISKER_ANGLE + 45)), sinf(DEG2RAD * (rotation - WHISKER_ANGLE + 45)) };
+        Vector2 leftBack = { cosf(DEG2RAD * (rotation - WHISKER_ANGLE - 45)), sinf(DEG2RAD * (rotation - WHISKER_ANGLE - 45)) };
 
-        // Calculate the change in velocity required
-        Vector2 deltaVelocity = Vector2Subtract(desiredVelocity, agentVelocity);
+        Vector2 rightEndpoint = Vector2Add(position, Vector2Scale(right, WHISKER_LENGTH));
+        Vector2 leftEndpoint = Vector2Add(position, Vector2Scale(left, WHISKER_LENGTH));
+        Vector2 rightFrontEndpoint = Vector2Add(position, Vector2Scale(rightFront, WHISKER_LENGTH));
+        Vector2 rightBackEndpoint = Vector2Add(position, Vector2Scale(rightBack, WHISKER_LENGTH));
+        Vector2 leftFrontEndpoint = Vector2Add(position, Vector2Scale(leftFront, WHISKER_LENGTH));
+        Vector2 leftBackEndpoint = Vector2Add(position, Vector2Scale(leftBack, WHISKER_LENGTH));
 
-        // Calculate the acceleration vector
-        Vector2 acceleration = Vector2Normalize(deltaVelocity);
-        acceleration = Vector2Scale(acceleration, maxAcceleration);
+        DrawLineV(position, rightEndpoint, BLACK);
+        DrawLineV(position, leftEndpoint, BLACK);
+        DrawLineV(position, rightFrontEndpoint, BLACK);
+        DrawLineV(position, rightBackEndpoint, BLACK);
+        DrawLineV(position, leftFrontEndpoint, BLACK);
+        DrawLineV(position, leftBackEndpoint, BLACK);
 
-        return acceleration;
+        bool rightWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
+        bool leftWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
+        bool rightFrontWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
+        bool rightBackWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
+        bool leftFrontWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
+        bool leftBackWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
+
+        if (rightWhiskerCollision)
+        {
+            DrawLineV(position, rightEndpoint, RED);
+        }
+
+        if (leftWhiskerCollision)
+        {
+            DrawLineV(position, leftEndpoint, RED);
+        }
+
+        if (rightFrontWhiskerCollision)
+        {
+            DrawLineV(position, rightFrontEndpoint, RED);
+        }
+
+        if (rightBackWhiskerCollision)
+        {
+            DrawLineV(position, rightBackEndpoint, RED);
+        }
+
+        if (leftFrontWhiskerCollision)
+        {
+            DrawLineV(position, leftFrontEndpoint, RED);
+        }
+
+        if (leftBackWhiskerCollision)
+        {
+            DrawLineV(position, leftBackEndpoint, RED);
+        }
+    }
+
+    void Target::ObstacleAvoidance(const Agent& agent, const std::vector<Vector2>& obstaclePositions)
+    {
+        for (const auto& obstaclePos : obstaclePositions)
+        {
+            Vector2 obstacleDirection = Vector2Subtract(obstaclePos, position);
+            float obstacleDistance = Vector2Length(obstacleDirection);
+
+            if (obstacleDistance < WHISKER_LENGTH)
+            {
+                Vector2 avoidanceForce = Vector2Normalize(obstacleDirection);
+                avoidanceForce = Vector2Scale(avoidanceForce, WHISKER_LENGTH - obstacleDistance);
+
+                velocity = Vector2Add(velocity, avoidanceForce);
+            }
+        }
     }
 
 };
 
 int main(void)
 {
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Purple Square");
-    SetTargetFPS(120);
-    rlImGuiSetup(true);
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "My Lab 3");
+    SetTargetFPS(60);
 
-    std::vector<Agent> agents;
+    Agent agent({ SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 });
+    Target target({ 100.0f, 100.0f });
 
-    agents.emplace_back(Vector2{ SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 }, 200.0f, 200.0f);
-
-    Vector2 target = { 0, 0 };
-    Vector2 rectanglePosition = { SCREEN_WIDTH / 2 - 25, SCREEN_HEIGHT / 2 - 25 };
-    float dt;
-
-    bool useGUI = false;
+    std::vector<Vector2> obstaclePositions;
+    Vector2 obstaclePosition = { 400.0f, 300.0f };
 
     while (!WindowShouldClose())
     {
-        dt = GetFrameTime();
-
-        // Update the target position based on mouse position
-        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
         {
-            isMouseButtonPressed = true;
-            target = GetMousePosition();
-        }
-        else
-        {
-            isMouseButtonPressed = false;
+            obstaclePositions.push_back(GetMousePosition());
         }
 
-        if (useGUI)
+        Vector2 mousePosition = GetMousePosition();
+        agent.Update(mousePosition, obstaclePosition);
+        target.Update(agent, obstaclePositions);
+        target.ObstacleAvoidance(agent, obstaclePositions);
+
+        BeginDrawing();
+        ClearBackground(WHITE);
+
+        DrawCircleV(agent.position, 20, BLUE);
+        DrawCircleV(target.position, 10, RED);
+
+        for (const auto& obstaclePos : obstaclePositions)
         {
-            // ...
-        }
-        else
-        {
-            for (auto& agent : agents)
-            {
-                agent.Update(dt, target, rectanglePosition);
-            }
-
-            BeginDrawing();
-            ClearBackground(RAYWHITE);
-            DrawFPS(10, 10);
-            for (const auto& agent : agents)
-            {
-                DrawText(TextFormat("Position: (%.2f, %.2f)", agent.rigidbody.position.x, agent.rigidbody.position.y), 10, 30, 20, BLACK);
-                DrawCircleV(agent.rigidbody.position, 20, RED);
-            }
-
-            // Draw target as a circle
-            DrawCircleV(target, 20, GREEN);
-
-            // Draw the rectangle at the middle right of the window
-            DrawRectangle(rectanglePosition.x, rectanglePosition.y, 50, 50, PURPLE);
-
-            EndDrawing();
+            DrawCircleV(obstaclePos, 20, GRAY);
         }
 
-        // Update the target position based on mouse position
-        target = GetMousePosition();
+        target.DrawWhiskers(agent);
+
+        EndDrawing();
     }
 
     CloseWindow();
+
     return 0;
 }
+
 
 
 
