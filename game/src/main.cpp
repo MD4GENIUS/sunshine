@@ -1,207 +1,162 @@
-#include "raylib.h"
-#include "rlImGui.h"
+#include <raylib.h>
 #include <vector>
-#include <cmath>
-#include "raymath.h"
+#include <cstdlib>
+#include "TileCoord.h"
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 450
-#define WHISKER_LENGTH 100
-#define WHISKER_ANGLE 30
-
-class Agent
-{
-public:
-    Vector2 position;
-    float rotation;
-
-    Agent(Vector2 startPos)
-        : position(startPos), rotation(0.0f)
-    {
-    }
-
-    void Update(const Vector2& mousePosition, const Vector2& obstaclePosition)
-    {
-        Vector2 direction = Vector2Subtract(mousePosition, position);
-        float angle = atan2f(direction.y, direction.x);
-        rotation = RAD2DEG * angle;
-
-        Vector2 obstacleDirection = Vector2Subtract(obstaclePosition, position);
-        float obstacleAngle = atan2f(obstacleDirection.y, obstacleDirection.x);
-        float angleDiff = rotation - RAD2DEG * obstacleAngle;
-
-        if (angleDiff > 0)
-        {
-            rotation += 1.0f;
-        }
-        else
-        {
-            rotation -= 1.0f;
-        }
-
-        position = mousePosition;
-    }
-
-
+enum class TileType {
+    Floor,
+    Wall
 };
 
-class Target
-{
+// Tilemap class
+class Tilemap {
 public:
-    Vector2 position;
-    float rotation;
-    Vector2 velocity;
-
-    Target(Vector2 startPos)
-        : position(startPos), rotation(0.0f), velocity(Vector2Zero())
-    {
+    // Constructor
+    Tilemap(int width, int height) : width_(width), height_(height) {
+        // Initialize the tilemap with floor tiles
+        tiles_.resize(height_, std::vector<TileType>(width_, TileType::Floor));
     }
 
-    void Target::Update(const Agent& agent, const std::vector<Vector2>& obstaclePositions)
-    {
-        Vector2 direction = Vector2Subtract(agent.position, position);
-        direction = Vector2Normalize(direction);
-
-        for (const auto& obstaclePos : obstaclePositions)
-        {
-            Vector2 obstacleDirection = Vector2Subtract(obstaclePos, position);
-            float obstacleDistance = Vector2Length(obstacleDirection);
-
-            if (obstacleDistance < WHISKER_LENGTH)
-            {
-                Vector2 avoidanceForce = Vector2Normalize(obstacleDirection);
-                avoidanceForce = Vector2Scale(avoidanceForce, WHISKER_LENGTH - obstacleDistance);
-
-                direction = Vector2Add(direction, avoidanceForce);
-            }
-        }
-
-        float speed = 2.0f;
-        velocity = Vector2Scale(direction, speed);
-
-        position = Vector2Add(position, velocity);
-
-        float angle = atan2f(direction.y, direction.x);
-        rotation = RAD2DEG * angle;
+    // Get tile at specific position
+    TileType getTile(int x, int y) const {
+        return tiles_[y][x];
     }
 
-
-    void DrawWhiskers(const Agent& agent) const
-    {
-        Vector2 right = { cosf(DEG2RAD * (rotation + WHISKER_ANGLE)), sinf(DEG2RAD * (rotation + WHISKER_ANGLE)) };
-        Vector2 left = { cosf(DEG2RAD * (rotation - WHISKER_ANGLE)), sinf(DEG2RAD * (rotation - WHISKER_ANGLE)) };
-
-        Vector2 rightFront = { cosf(DEG2RAD * (rotation + WHISKER_ANGLE + 45)), sinf(DEG2RAD * (rotation + WHISKER_ANGLE + 45)) };
-        Vector2 rightBack = { cosf(DEG2RAD * (rotation + WHISKER_ANGLE - 45)), sinf(DEG2RAD * (rotation + WHISKER_ANGLE - 45)) };
-        Vector2 leftFront = { cosf(DEG2RAD * (rotation - WHISKER_ANGLE + 45)), sinf(DEG2RAD * (rotation - WHISKER_ANGLE + 45)) };
-        Vector2 leftBack = { cosf(DEG2RAD * (rotation - WHISKER_ANGLE - 45)), sinf(DEG2RAD * (rotation - WHISKER_ANGLE - 45)) };
-
-        Vector2 rightEndpoint = Vector2Add(position, Vector2Scale(right, WHISKER_LENGTH));
-        Vector2 leftEndpoint = Vector2Add(position, Vector2Scale(left, WHISKER_LENGTH));
-        Vector2 rightFrontEndpoint = Vector2Add(position, Vector2Scale(rightFront, WHISKER_LENGTH));
-        Vector2 rightBackEndpoint = Vector2Add(position, Vector2Scale(rightBack, WHISKER_LENGTH));
-        Vector2 leftFrontEndpoint = Vector2Add(position, Vector2Scale(leftFront, WHISKER_LENGTH));
-        Vector2 leftBackEndpoint = Vector2Add(position, Vector2Scale(leftBack, WHISKER_LENGTH));
-
-        DrawLineV(position, rightEndpoint, BLACK);
-        DrawLineV(position, leftEndpoint, BLACK);
-        DrawLineV(position, rightFrontEndpoint, BLACK);
-        DrawLineV(position, rightBackEndpoint, BLACK);
-        DrawLineV(position, leftFrontEndpoint, BLACK);
-        DrawLineV(position, leftBackEndpoint, BLACK);
-
-        bool rightWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
-        bool leftWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
-        bool rightFrontWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
-        bool rightBackWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
-        bool leftFrontWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
-        bool leftBackWhiskerCollision = CheckCollisionCircles(position, WHISKER_LENGTH, agent.position, 10.0f);
-
-        if (rightWhiskerCollision)
-        {
-            DrawLineV(position, rightEndpoint, RED);
-        }
-
-        if (leftWhiskerCollision)
-        {
-            DrawLineV(position, leftEndpoint, RED);
-        }
-
-        if (rightFrontWhiskerCollision)
-        {
-            DrawLineV(position, rightFrontEndpoint, RED);
-        }
-
-        if (rightBackWhiskerCollision)
-        {
-            DrawLineV(position, rightBackEndpoint, RED);
-        }
-
-        if (leftFrontWhiskerCollision)
-        {
-            DrawLineV(position, leftFrontEndpoint, RED);
-        }
-
-        if (leftBackWhiskerCollision)
-        {
-            DrawLineV(position, leftBackEndpoint, RED);
-        }
+    // Set tile at specific position
+    void setTile(int x, int y, TileType tileType) {
+        tiles_[y][x] = tileType;
     }
 
-    void Target::ObstacleAvoidance(const Agent& agent, const std::vector<Vector2>& obstaclePositions)
-    {
-        for (const auto& obstaclePos : obstaclePositions)
-        {
-            Vector2 obstacleDirection = Vector2Subtract(obstaclePos, position);
-            float obstacleDistance = Vector2Length(obstacleDirection);
+    // Get the width of the tilemap
+    int getWidth() const {
+        return width_;
+    }
 
-            if (obstacleDistance < WHISKER_LENGTH)
-            {
-                Vector2 avoidanceForce = Vector2Normalize(obstacleDirection);
-                avoidanceForce = Vector2Scale(avoidanceForce, WHISKER_LENGTH - obstacleDistance);
+    // Get the height of the tilemap
+    int getHeight() const {
+        return height_;
+    }
 
-                velocity = Vector2Add(velocity, avoidanceForce);
+    // Generate a random level
+    void generateRandomLevel() {
+        for (int y = 0; y < height_; ++y) {
+            for (int x = 0; x < width_; ++x) {
+                // Generate a random number between 0 and 99
+                int randomValue = rand() % 100;
+
+                // Assign tile type based on the random value
+                if (randomValue < 20) {
+                    tiles_[y][x] = TileType::Wall;
+                }
+                else {
+                    tiles_[y][x] = TileType::Floor;
+                }
             }
         }
     }
 
+    // Check if a tile is traversable
+    bool isTileTraversable(int x, int y) const {
+        return (tiles_[y][x] == TileType::Floor);
+    }
+
+    // Get adjacent traversable tiles for a given tile position
+    std::vector<TileCoord> getAdjacentTiles(int x, int y) const {
+        std::vector<TileCoord> adjacentTiles;
+
+        // Check adjacent tiles in all four directions
+        // NORTH
+        if (y > 0 && isTileTraversable(x, y - 1)) {
+            adjacentTiles.emplace_back(x, y - 1);
+        }
+
+        // SOUTH
+        if (y < height_ - 1 && isTileTraversable(x, y + 1)) {
+            adjacentTiles.emplace_back(x, y + 1);
+        }
+
+        // WEST
+        if (x > 0 && isTileTraversable(x - 1, y)) {
+            adjacentTiles.emplace_back(x - 1, y);
+        }
+
+        // EAST
+        if (x < width_ - 1 && isTileTraversable(x + 1, y)) {
+            adjacentTiles.emplace_back(x + 1, y);
+        }
+
+        return adjacentTiles;
+    }
+
+private:
+    int width_;                            // Width of the tilemap
+    int height_;                           // Height of the tilemap
+    std::vector<std::vector<TileType>> tiles_;  // 2D vector to store tile data
 };
 
-int main(void)
-{
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "My Lab 3");
+int main(void) {
+    const int screenWidth = 800;
+    const int screenHeight = 450;
+    InitWindow(screenWidth, screenHeight, "Tilemap ");
+
+    const int MAP_WIDTH = 16;
+    const int MAP_HEIGHT = 9;
+    const float TILE_SIZE = 50.0f;
+
+    Tilemap tilemap(MAP_WIDTH, MAP_HEIGHT);
+
+    // Generate a random level
+    tilemap.generateRandomLevel();
+
+    // Load character sprite texture
+    Texture2D characterTexture = LoadTexture("..\\game\\assets\\textures\\mario.png");
+
+    // Initial character position
+    Vector2 characterPosition = { TILE_SIZE / 2, TILE_SIZE / 2 };
+
     SetTargetFPS(60);
 
-    Agent agent({ SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 });
-    Target target({ 100.0f, 100.0f });
+    while (!WindowShouldClose()) {
+        // Update
+        Vector2 previousPosition = characterPosition;
 
-    std::vector<Vector2> obstaclePositions;
-    Vector2 obstaclePosition = { 400.0f, 300.0f };
-
-    while (!WindowShouldClose())
-    {
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-        {
-            obstaclePositions.push_back(GetMousePosition());
+        if (IsKeyDown(KEY_W) && characterPosition.y > TILE_SIZE / 2 && tilemap.isTileTraversable(characterPosition.x / TILE_SIZE, (characterPosition.y - TILE_SIZE) / TILE_SIZE)) {
+            characterPosition.y -= TILE_SIZE;
+        }
+        if (IsKeyDown(KEY_S) && characterPosition.y < MAP_HEIGHT * TILE_SIZE - TILE_SIZE / 2 && tilemap.isTileTraversable(characterPosition.x / TILE_SIZE, (characterPosition.y + TILE_SIZE) / TILE_SIZE)) {
+            characterPosition.y += TILE_SIZE;
+        }
+        if (IsKeyDown(KEY_A) && characterPosition.x > TILE_SIZE / 2 && tilemap.isTileTraversable((characterPosition.x - TILE_SIZE) / TILE_SIZE, characterPosition.y / TILE_SIZE)) {
+            characterPosition.x -= TILE_SIZE;
+        }
+        if (IsKeyDown(KEY_D) && characterPosition.x < MAP_WIDTH * TILE_SIZE - TILE_SIZE / 2 && tilemap.isTileTraversable((characterPosition.x + TILE_SIZE) / TILE_SIZE, characterPosition.y / TILE_SIZE)) {
+            characterPosition.x += TILE_SIZE;
         }
 
-        Vector2 mousePosition = GetMousePosition();
-        agent.Update(mousePosition, obstaclePosition);
-        target.Update(agent, obstaclePositions);
-        target.ObstacleAvoidance(agent, obstaclePositions);
-
+        // Draw
         BeginDrawing();
-        ClearBackground(WHITE);
+        ClearBackground(RAYWHITE);
 
-        DrawCircleV(agent.position, 20, BLUE);
-        DrawCircleV(target.position, 10, RED);
+        // Draw tilemap
+        for (int y = 0; y < tilemap.getHeight(); ++y) {
+            for (int x = 0; x < tilemap.getWidth(); ++x) {
+                const TileType tileType = tilemap.getTile(x, y);
+                const Vector2 position{ x * TILE_SIZE, y * TILE_SIZE };
+                const Rectangle tileRect = { position.x, position.y, TILE_SIZE, TILE_SIZE };
 
-        for (const auto& obstaclePos : obstaclePositions)
-        {
-            DrawCircleV(obstaclePos, 20, GRAY);
+                switch (tileType) {
+                case TileType::Floor:
+                    DrawRectangleRec(tileRect, GREEN);
+                    break;
+                case TileType::Wall:
+                    DrawRectangleRec(tileRect, GRAY);
+                    break;
+                }
+            }
         }
 
-        target.DrawWhiskers(agent);
+        // Draw character sprite
+        DrawTexture(characterTexture, characterPosition.x - characterTexture.width / 2, characterPosition.y - characterTexture.height / 2, WHITE);
 
         EndDrawing();
     }
@@ -210,8 +165,3 @@ int main(void)
 
     return 0;
 }
-
-
-
-
-
