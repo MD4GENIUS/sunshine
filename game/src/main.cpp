@@ -144,16 +144,41 @@ int main(void) {
                 const Vector2 position{ x * TILE_SIZE, y * TILE_SIZE };
                 const Rectangle tileRect = { position.x, position.y, TILE_SIZE, TILE_SIZE };
 
+                // Draw tile
                 switch (tileType) {
                 case TileType::Floor:
-                    DrawRectangleRec(tileRect, GREEN);
+                    DrawRectangleRec(tileRect, BLUE);
+                    DrawRectangleLinesEx(tileRect, 1, DARKGRAY);
                     break;
                 case TileType::Wall:
-                    DrawRectangleRec(tileRect, GRAY);
+                    DrawRectangleRec(tileRect, RED);
+                    DrawRectangleLinesEx(tileRect, 1, ORANGE);
                     break;
                 }
+
+
+                // Draw circle in the center of the green lines
+                if (tileType == TileType::Floor) {
+                    std::vector<TileCoord> adjacentTiles = tilemap.getAdjacentTiles(x, y);
+                    Vector2 center = { position.x + TILE_SIZE / 2, position.y + TILE_SIZE / 2 };
+
+                    // Draw lines to adjacent traversable tiles
+                    for (const auto& adjacentTile : adjacentTiles) {
+                        Vector2 adjacentCenter = { adjacentTile.x * TILE_SIZE + TILE_SIZE / 2, adjacentTile.y * TILE_SIZE + TILE_SIZE / 2 };
+                        DrawLine(center.x, center.y, adjacentCenter.x, adjacentCenter.y, GREEN);
+                    }
+
+                    // Calculate radius of the circle
+                    float radius = TILE_SIZE / 4;
+
+                    // Draw circle in the center of the green lines
+                    DrawCircle(center.x, center.y, radius, RED);
+                }
+
+
             }
         }
+
 
         // Draw character sprite
         DrawTexture(characterTexture, characterPosition.x - characterTexture.width / 2, characterPosition.y - characterTexture.height / 2, WHITE);
